@@ -1,23 +1,9 @@
---[[
-Yun Founders: flash#9999, loris#9547, worldwide#0001 , Saul Goodman#2345
-Yun Devs: zomb#7741, nives#0001, loot#1337
-Special Thanks To: Qw#1549
---]]
 function initLibrary()
-    local folderName = "epic config folder"
-
-
-    if not isfolder(folderName) then
-        makefolder(folderName)
+    if game:GetService("CoreGui"):FindFirstChild("AutoTraitGUI") then
+        game:GetService("CoreGui").AutoTraitGUI:Destroy()
     end
 
-
-    local gameConfigFolder = folderName .. "/" .. game.PlaceId
-
-
-    if not isfolder(gameConfigFolder) then
-        makefolder(gameConfigFolder)
-    end
+    local contentHolder
 
 
     local inputService = game:GetService("UserInputService")
@@ -27,31 +13,85 @@ function initLibrary()
 
 
     local utility = {}
-
+    local AllObjects = {}
+    local ExclusionsTable = {}
 
     function utility.create(class, properties)
         properties = properties or {}
-
-
+    
         local obj = Instance.new(class)
-
-
+    
         local forcedProperties = {
             AutoButtonColor = false
         }
+    
+        local backgroundTransparencyWhitelist = {
+            Frame = true,
+            TextLabel = true,
+            TextButton = true,
+            ImageLabel = true,
+            ImageButton = true,
+            ScrollingFrame = true,
+            TextBox = true
+        }
 
+        local textTransparencyWhitelist = {
+            TextLabel = true,
+            TextButton = true,
+            TextBox = true
+        }
 
+        local imageTransparencyWhitelist = {
+            ImageButton = true,
+            ImageLabel = true
+        }
+    
+        if properties.BackgroundTransparency == nil and backgroundTransparencyWhitelist[class] then
+            pcall(function()
+                properties.BackgroundTransparency = 1
+            end)
+        end
+
+        if properties.TextTransparency == nil and textTransparencyWhitelist[class] then
+            pcall(function()
+                properties.TextTransparency = 1
+            end)
+        end
+
+        if properties.ImageTransparency == nil and imageTransparencyWhitelist[class] then
+            pcall(function()
+                properties.ImageTransparency = 1
+            end)
+        end
+    
         for prop, v in next, properties do
             obj[prop] = v
         end
-
-
+    
         for prop, v in next, forcedProperties do
             pcall(function()
                 obj[prop] = v
             end)
         end
-        
+
+        local success, response = pcall(function()
+            if properties.Text and properties.Text == "AutoTrait" then
+                table.insert(ExclusionsTable, obj)
+            elseif properties.Text and properties.Text == "ExpensiveHub | AT v3" then
+                table.insert(ExclusionsTable, obj)
+            elseif properties.Image and properties.Size == UDim2.new(0, 14, 0, 14) then
+                table.insert(ExclusionsTable, obj)
+            elseif obj:IsA("TextBox") then
+                table.insert(ExclusionsTable, obj)
+            else
+                table.insert(AllObjects, obj)
+            end
+        end)
+
+        if not success then
+            warn(response)
+        end
+    
         return obj
     end
 
@@ -87,32 +127,49 @@ function initLibrary()
     end
 
 
-    function utility.drag(obj, dragSpeed)
-        local start, objPosition, dragging
-
-
+    function utility.drag(obj)
+        local dragging = false
+        local dragStart
+        local startPos
+        local screenGui = obj:FindFirstAncestorWhichIsA("ScreenGui")
+        local TweenService = game:GetService("TweenService")
+        local UserInputService = game:GetService("UserInputService")
+    
         obj.InputBegan:Connect(function(input)
             if input.UserInputType == Enum.UserInputType.MouseButton1 then
                 dragging = true
-                start = input.Position
-                objPosition = obj.Position
+                dragStart = UserInputService:GetMouseLocation()
+                startPos = obj.Position
             end
         end)
-
-
-        obj.InputEnded:Connect(function(input )
-            if input.UserInputType == Enum.UserInputType.MouseButton1 then 
+    
+        obj.InputEnded:Connect(function(input)
+            if input.UserInputType == Enum.UserInputType.MouseButton1 then
                 dragging = false
             end
         end)
-
-
-        inputService.InputChanged:Connect(function(input)
-            if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then   
-                utility.tween(obj, {dragSpeed}, {Position = UDim2.new(objPosition.X.Scale, objPosition.X.Offset + (input.Position - start).X, objPosition.Y.Scale, objPosition.Y.Offset + (input.Position - start).Y)})
+    
+        UserInputService.InputChanged:Connect(function(input)
+            if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+                local currentMouse = UserInputService:GetMouseLocation()
+                local delta = currentMouse - dragStart
+    
+                local newPosition = UDim2.new(
+                    startPos.X.Scale,
+                    startPos.X.Offset + delta.X,
+                    startPos.Y.Scale,
+                    startPos.Y.Offset + delta.Y
+                )
+    
+                TweenService:Create(
+                    obj,
+                    TweenInfo.new(0.15, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+                    {Position = newPosition}
+                ):Play()
             end
         end)
     end
+    
 
 
     function utility.get_center(sizeX, sizeY)
@@ -159,8 +216,7 @@ function initLibrary()
         flags = {}, 
         toggled = true,
         color = Color3.fromRGB(255, 0, 0),
-        keybind = Enum.KeyCode.L, 
-        dragSpeed = 0.1
+        --keybind = Enum.KeyCode.L, 
     }    
 
 
@@ -180,7 +236,8 @@ function initLibrary()
     end
 
 
-    gui = utility.create("ScreenGui")
+    local gui = utility.create("ScreenGui")
+    gui.Name = "AutoTraitGUI"
     getgenv().guiXANAXsuka = gui
 
 
@@ -202,134 +259,12 @@ function initLibrary()
 
     local flags = {toggles = {}, boxes = {}, sliders = {}, dropdowns = {}, multidropdowns = {}, keybinds = {}, colorpickers = {}}
 
-
-    function library:LoadConfig(file)
-        local str = readfile(gameConfigFolder .. "/" .. file .. ".cfg")
-        local tbl = loadstring(str)()
-        
-        for flag, value in next, tbl.toggles do
-            flags.toggles[flag](value)
-        end
-
-
-        for flag, value in next, tbl.boxes do
-            flags.boxes[flag](value)
-        end
-
-
-        for flag, value in next, tbl.sliders do
-            flags.sliders[flag](value)
-        end
-
-
-        for flag, value in next, tbl.dropdowns do
-            flags.dropdowns[flag](value)
-        end
-
-
-        for flag, value in next, tbl.multidropdowns do
-            flags.multidropdowns[flag](value)
-        end
-
-
-        for flag, value in next, tbl.keybinds do
-            flags.keybinds[flag](value)
-        end
-
-
-        for flag, value in next, tbl.colorpickers do
-            flags.colorpickers[flag](value)
-        end
-    end
-
-
-    function library:SaveConfig(name)
-        local configstr = "{toggles={"
-        local count = 0
-
-
-        for flag, _ in next, flags.toggles do
-            count = count + 1
-            configstr = configstr .. "['" .. flag .. "']=" .. tostring(library.flags[flag]) .. ","
-        end
-
-
-        configstr = (count > 0 and configstr:sub(1, -2) or configstr) .. "},boxes={"
-
-
-        count = 0
-        for flag, _ in next, flags.boxes do
-            count = count + 1
-            configstr = configstr .. "['" .. flag .. "']='" .. tostring(library.flags[flag]) .. "',"
-        end
-
-
-        configstr = (count > 0 and configstr:sub(1, -2) or configstr) .. "},sliders={"
-
-
-        count = 0
-        for flag, _ in next, flags.sliders do
-            count = count + 1
-            configstr = configstr .. "['" .. flag .. "']=" .. tostring(library.flags[flag]) .. ","
-        end
-
-
-        configstr = (count > 0 and configstr:sub(1, -2) or configstr) .. "},dropdowns={"
-
-
-        count = 0
-        for flag, _ in next, flags.dropdowns do
-            count = count + 1
-            configstr = configstr .. "['" .. flag .. "']='" .. tostring(library.flags[flag]) .. "',"
-        end
-
-
-        configstr = (count > 0 and configstr:sub(1, -2) or configstr) .. "},multidropdowns={"
-
-
-        count = 0
-        for flag, _ in next, flags.multidropdowns do
-            count = count + 1
-            configstr = configstr .. "['" .. flag .. "']={'" .. table.concat(library.flags[flag], "','") .. "'},"
-        end
-
-
-        configstr = (count > 0 and configstr:sub(1, -2) or configstr) .. "},keybinds={"
-
-
-        count = 0
-        for flag, _ in next, flags.keybinds do
-            count = count + 1
-            configstr = configstr .. "['" .. flag .. "']=" .. tostring(library.flags[flag]) .. ","
-        end
-
-
-        configstr = (count > 0 and configstr:sub(1, -2) or configstr) .. "},colorpickers={"
-
-
-        count = 0
-        for flag, _ in next, flags.colorpickers do
-            count = count + 1
-            configstr = configstr .. "['" .. flag .. "']=Color3.new(" .. tostring(library.flags[flag]) .. "),"
-        end
-
-
-        configstr = (count > 0 and configstr:sub(1, -2) or configstr) .. "}}"
-
-
-        writefile(gameConfigFolder .. "/" .. name .. ".cfg", "return " .. configstr)
-    end
-
-
-
-
     function library:Load(opts)
         local options = utility.table(opts)
         local name = options.name or "Epic UI Library"
         local sizeX = options.sizeX or 466
         local sizeY = options.sizeY or 350
-        local color = options.color or Color3.fromRGB(255, 255, 255)
-        local dragSpeed = options.dragSpeed or 0
+        local color = Color3.fromRGB(87, 85, 212)
 
 
         library.color = color
@@ -340,12 +275,12 @@ function initLibrary()
             Size = UDim2.new(0, sizeX, 0, 26),
             Position = utility.get_center(sizeX, sizeY),
             BorderSizePixel = 0,
-            BackgroundColor3 = Color3.fromRGB(22, 22, 22),
+            BackgroundColor3 = Color3.fromRGB(58, 55, 154),
             Parent = gui
         })
 
 
-        utility.drag(topbar, dragSpeed)
+        utility.drag(topbar)
 
 
         utility.create("TextLabel", {
@@ -361,11 +296,11 @@ function initLibrary()
             TextXAlignment = Enum.TextXAlignment.Left,
             Parent = topbar
         })
-        
+
         local main = utility.create("Frame", {
             Size = UDim2.new(1, 0, 0, sizeY),
-            BorderColor3 = Color3.fromRGB(20, 20, 20),
-            BackgroundColor3 = Color3.fromRGB(32, 32, 32),
+            BorderColor3 = Color3.fromRGB(36, 33, 90),
+            BackgroundColor3 = Color3.fromRGB(53, 45, 126),
             Parent = topbar
         })
 
@@ -375,16 +310,16 @@ function initLibrary()
             Size = UDim2.new(1, -8, 1, -64),
             BackgroundTransparency = 1,
             Position = UDim2.new(0, 4, 0, 58),
-            BackgroundColor3 = Color3.fromRGB(255, 255, 255),
+            BackgroundColor3 = Color3.fromRGB(38, 33, 114),
             Parent = main
         })
         
         local tabToggles = utility.create("Frame", {
             ZIndex = 2,
             Size = UDim2.new(1, 0, 0, 26),
-            BorderColor3 = Color3.fromRGB(20, 20, 20),
+            BorderColor3 = Color3.fromRGB(32, 28, 79),
             Position = UDim2.new(0, 0, 0, 26),
-            BackgroundColor3 = Color3.fromRGB(26, 26, 26),
+            BackgroundColor3 = Color3.fromRGB(44, 38, 106),
             Parent = main
         })
 
@@ -547,9 +482,9 @@ function initLibrary()
                 local section = utility.create("Frame", {
                     ZIndex = 2,
                     Size = UDim2.new(1, -2, 1, -2),
-                    BorderColor3 = Color3.fromRGB(22, 22, 22),
+                    BorderColor3 = Color3.fromRGB(32, 28, 79),
                     Position = UDim2.new(0, 1, 0, 1),
-                    BackgroundColor3 = Color3.fromRGB(28, 28, 28),
+                    BackgroundColor3 = Color3.fromRGB(39, 34, 94),
                     Parent = sectionHolder
                 })
                 
@@ -557,7 +492,7 @@ function initLibrary()
                     ZIndex = 3,
                     Size = UDim2.new(1, 0, 0, 24),
                     BorderSizePixel = 0,
-                    BackgroundColor3 = Color3.fromRGB(22, 22, 22),
+                    BackgroundColor3 = Color3.fromRGB(32, 28, 79),
                     Parent = section
                 })
 
@@ -679,7 +614,7 @@ function initLibrary()
                         Size = UDim2.new(0, specialLabel.TextBounds.X + 6, 0, 1),
                         Position = UDim2.new(0.5, -((specialLabel.TextBounds.X + 6) / 2), 0.5, 1),
                         BorderSizePixel = 0,
-                        BackgroundColor3 = Color3.fromRGB(28, 28, 28),
+                        BackgroundColor3 = Color3.fromRGB(39, 34, 94),
                         Parent = specialLabel
                     })
 
@@ -721,7 +656,7 @@ function initLibrary()
                     local button = utility.create("TextButton", {
                         ZIndex = 3,
                         Size = UDim2.new(1, 0, 0, 16),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         Font = Enum.Font.Gotham,
                         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                         Text = "",
@@ -732,8 +667,8 @@ function initLibrary()
                     utility.create("UIGradient", {
                         Rotation = 90,
                         Color = ColorSequence.new{
-                            ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)), 
-                            ColorSequenceKeypoint.new(1, Color3.fromRGB(17, 17, 17))
+                            ColorSequenceKeypoint.new(0, Color3.fromRGB(65, 56, 158)),
+                            ColorSequenceKeypoint.new(1, Color3.fromRGB(36, 33, 90))
                         },
                         Parent = button
                     })
@@ -821,8 +756,8 @@ function initLibrary()
                     local iconGradient = utility.create("UIGradient", {
                         Rotation = 90,
                         Color = ColorSequence.new{
-                            ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)), 
-                            ColorSequenceKeypoint.new(1, Color3.fromRGB(17, 17, 17))
+                            ColorSequenceKeypoint.new(0, Color3.fromRGB(65, 56, 158)),
+                            ColorSequenceKeypoint.new(1, Color3.fromRGB(36, 33, 90))
                         },
                         Parent = icon
                     })
@@ -863,8 +798,8 @@ function initLibrary()
                             }
                         else
                             gradientColor = ColorSequence.new{
-                                ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)), 
-                                ColorSequenceKeypoint.new(1, Color3.fromRGB(17, 17, 17))
+                                ColorSequenceKeypoint.new(0, Color3.fromRGB(65, 56, 158)),
+                                ColorSequenceKeypoint.new(1, Color3.fromRGB(36, 33, 90))
                             }
                         end
 
@@ -963,7 +898,7 @@ function initLibrary()
                     local box = utility.create("TextBox", {
                         ZIndex = 4,
                         Size = UDim2.new(1, 0, 0, 16),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         BackgroundTransparency = 1,
                         Position = UDim2.new(0, 0, 1, -16),
                         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
@@ -980,7 +915,7 @@ function initLibrary()
                     local bg = utility.create("Frame", {
                         ZIndex = 3,
                         Size = UDim2.new(1, 0, 1, 0),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         Position = UDim2.new(0, 0, 0, 0),
                         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                         Parent = box
@@ -989,7 +924,7 @@ function initLibrary()
 
                     utility.create("UIGradient", {
                         Rotation = 90,
-                        Color = ColorSequence.new(Color3.fromRGB(32, 32, 32), Color3.fromRGB(17, 17, 17)),
+                        Color = ColorSequence.new(Color3.fromRGB(65, 56, 158), Color3.fromRGB(36, 33, 90)),
                         Parent = bg
                     })
                     
@@ -1137,7 +1072,7 @@ function initLibrary()
                     local slider = utility.create("Frame", {
                         ZIndex = 3,
                         Size = UDim2.new(1, 0, 0, 16),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         Position = UDim2.new(0, 0, 1, -13),
                         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                         Parent = sectionContent
@@ -1166,8 +1101,8 @@ function initLibrary()
                     utility.create("UIGradient", {
                         Rotation = 90,
                         Color = ColorSequence.new{
-                            ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)), 
-                            ColorSequenceKeypoint.new(1, Color3.fromRGB(17, 17, 17))
+                            ColorSequenceKeypoint.new(0, Color3.fromRGB(65, 56, 158)),
+                            ColorSequenceKeypoint.new(1, Color3.fromRGB(36, 33, 90))
                         },
                         Parent = slider
                     })
@@ -1351,7 +1286,7 @@ function initLibrary()
                     local slider = utility.create("Frame", {
                         ZIndex = 3,
                         Size = UDim2.new(1, 0, 0, 16),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         Position = UDim2.new(0, 0, 1, -16),
                         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                         Parent = toggleSliderHolder
@@ -1379,7 +1314,7 @@ function initLibrary()
                     
                     utility.create("UIGradient", {
                         Rotation = 90,
-                        Color = ColorSequence.new(Color3.fromRGB(32, 32, 32), Color3.fromRGB(17, 17, 17)),
+                        Color = ColorSequence.new(Color3.fromRGB(65, 56, 158), Color3.fromRGB(36, 33, 90)),
                         Parent = slider
                     })
                     
@@ -1421,8 +1356,8 @@ function initLibrary()
                     local iconGradient = utility.create("UIGradient", {
                         Rotation = 90,
                         Color = ColorSequence.new{
-                            ColorSequenceKeypoint.new(0, Color3.fromRGB(32, 32, 32)), 
-                            ColorSequenceKeypoint.new(1, Color3.fromRGB(17, 17, 17))
+                            ColorSequenceKeypoint.new(0, Color3.fromRGB(65, 56, 158)),
+                            ColorSequenceKeypoint.new(1, Color3.fromRGB(36, 33, 90))
                         },
                         Parent = icon
                     })
@@ -1669,7 +1604,7 @@ function initLibrary()
                     local open = utility.create("TextButton", {
                         ZIndex = 3,
                         Size = UDim2.new(1, 0, 0, 16),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         Position = UDim2.new(0, 0, 0, 20),
                         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                         Text = "",
@@ -1680,7 +1615,7 @@ function initLibrary()
                     
                     utility.create("UIGradient", {
                         Rotation = 90,
-                        Color = ColorSequence.new(Color3.fromRGB(32, 32, 32), Color3.fromRGB(17, 17, 17)),
+                        Color = ColorSequence.new(Color3.fromRGB(65, 56, 158), Color3.fromRGB(36, 33, 90)),
                         Parent = open
                     })
                     
@@ -1713,13 +1648,13 @@ function initLibrary()
                         ZIndex = 10,
                         Visible = false,
                         Size = UDim2.new(1, 0, 0, 0),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         Position = UDim2.new(0, 0, 1, 3),
-                        BackgroundColor3 = Color3.fromRGB(33, 33, 33),
+                        BackgroundColor3 = Color3.fromRGB(53, 45, 126),
                         Parent = open
                     })
                     
-                    local contentHolder = utility.create("Frame", {
+                    contentHolder = utility.create("Frame", {
                         Size = UDim2.new(1, 0, 1, -4),
                         Position = UDim2.new(0, 0, 0, 2),
                         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
@@ -1737,12 +1672,19 @@ function initLibrary()
                         contentFrame.Size = UDim2.new(1, 0, 0, contentList.AbsoluteContentSize.Y + 4)
                     end)
 
-
                     local function openDropdown()
                         opened = not opened
-                        icon.Rotation = opened and 0 or 180
+                    
                         contentFrame.Visible = opened
-                        dropdownHolder.Size = UDim2.new(1, 0, 0, opened and dropdownHolder.AbsoluteSize.Y + contentFrame.AbsoluteSize.Y + 3 or 36)
+                        icon.Rotation = opened and 0 or 180
+                    
+                        local newSize = UDim2.new(1, 0, 0, opened and dropdownHolder.AbsoluteSize.Y + contentFrame.AbsoluteSize.Y + 3 or 36)
+                        local sizeTween = tweenService:Create(
+                            dropdownHolder,
+                            TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+                            { Size = newSize }
+                        )
+                        sizeTween:Play()
                     end
 
 
@@ -1784,6 +1726,10 @@ function initLibrary()
                             TextXAlignment = Enum.TextXAlignment.Left,
                             Parent = contentHolder
                         })
+
+                        task.delay(3, function()
+                            option.BackgroundTransparency = 1
+                        end)
                         
                         local optionPadding = utility.create("UIPadding", {
                             PaddingLeft = current == opt and UDim.new(0, 10) or UDim.new(0, 6),
@@ -2542,7 +2488,7 @@ function initLibrary()
                     
                     local iconGradient = utility.create("UIGradient", {
                         Rotation = 90,
-                        Color = ColorSequence.new(Color3.fromRGB(32, 32, 32), Color3.fromRGB(17, 17, 17)),
+                        Color = ColorSequence.new(Color3.fromRGB(65, 56, 158), Color3.fromRGB(36, 33, 90)),
                         Parent = icon
                     })
                     
@@ -2809,7 +2755,7 @@ function initLibrary()
                     local icon = utility.create("Frame", {
                         ZIndex = 3,
                         Size = UDim2.new(0, 22, 0, 14),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         Position = UDim2.new(1, -22, 0, 1),
                         BackgroundColor3 = default,
                         Parent = colorPicker
@@ -2829,16 +2775,16 @@ function initLibrary()
                         Visible = false,
                         Size = UDim2.new(1, -8, 0, 183),
                         ClipsDescendants = true,
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         Position = UDim2.new(0, 12, 1, 3),
-                        BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+                        BackgroundColor3 = Color3.fromRGB(49, 42, 119),
                         Parent = colorPicker
                     })
                     
                     local saturationFrame = utility.create("ImageLabel", {
                         ZIndex = 13,
                         Size = UDim2.new(1, -29, 0, 130),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         Position = UDim2.new(0, 5, 0, 5),
                         BackgroundColor3 = Color3.fromRGB(255, 0, 4),
                         Image = "http://www.roblox.com/asset/?id=8630797271",
@@ -2859,7 +2805,7 @@ function initLibrary()
                         ZIndex = 13,
                         Size = UDim2.new(0, 14, 0, 130),
                         ClipsDescendants = true,
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         BackgroundTransparency = 1,
                         Position = UDim2.new(1, -19, 0, 5),
                         BackgroundColor3 = Color3.fromRGB(255, 0, 4),
@@ -2898,14 +2844,14 @@ function initLibrary()
                     local bg = utility.create("Frame", {
                         ZIndex = 13,
                         Size = UDim2.new(1, 0, 1, 0),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                         Parent = rgb
                     })
                     
                     utility.create("UIGradient", {
                         Rotation = 90,
-                        Color = ColorSequence.new(Color3.fromRGB(32, 32, 32), Color3.fromRGB(17, 17, 17)),
+                        Color = ColorSequence.new(Color3.fromRGB(65, 56, 158), Color3.fromRGB(36, 33, 90)),
                         Parent = bg
                     })
                     
@@ -2929,14 +2875,14 @@ function initLibrary()
                     local bg = utility.create("Frame", {
                         ZIndex = 13,
                         Size = UDim2.new(1, 0, 1, 0),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                         Parent = hex
                     })
                     
                     utility.create("UIGradient", {
                         Rotation = 90,
-                        Color = ColorSequence.new(Color3.fromRGB(32, 32, 32), Color3.fromRGB(17, 17, 17)),
+                        Color = ColorSequence.new(Color3.fromRGB(65, 56, 158), Color3.fromRGB(36, 33, 90)),
                         Parent = bg
                     })
 
@@ -3232,7 +3178,7 @@ function initLibrary()
                     
                     local iconGradient = utility.create("UIGradient", {
                         Rotation = 90,
-                        Color = ColorSequence.new(Color3.fromRGB(32, 32, 32), Color3.fromRGB(17, 17, 17)),
+                        Color = ColorSequence.new(Color3.fromRGB(65, 56, 158), Color3.fromRGB(36, 33, 90)),
                         Parent = icon
                     })
 
@@ -3241,7 +3187,7 @@ function initLibrary()
                         ZIndex = 3,
                         Text = "",
                         Size = UDim2.new(0, 22, 0, 14),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         Position = UDim2.new(1, -22, 0, 1),
                         BackgroundColor3 = default,
                         Parent = colorPicker
@@ -3276,16 +3222,16 @@ function initLibrary()
                         Visible = false,
                         Size = UDim2.new(1, -8, 0, 183),
                         ClipsDescendants = true,
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         Position = UDim2.new(0, 12, 1, 3),
-                        BackgroundColor3 = Color3.fromRGB(20, 20, 20),
+                        BackgroundColor3 = Color3.fromRGB(49, 42, 119),
                         Parent = colorPicker
                     })
                     
                     local saturationFrame = utility.create("ImageLabel", {
                         ZIndex = 13,
                         Size = UDim2.new(1, -29, 0, 130),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         Position = UDim2.new(0, 5, 0, 5),
                         BackgroundColor3 = Color3.fromRGB(255, 0, 4),
                         Image = "http://www.roblox.com/asset/?id=8630797271",
@@ -3306,7 +3252,7 @@ function initLibrary()
                         ZIndex = 13,
                         Size = UDim2.new(0, 14, 0, 130),
                         ClipsDescendants = true,
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         BackgroundTransparency = 1,
                         Position = UDim2.new(1, -19, 0, 5),
                         BackgroundColor3 = Color3.fromRGB(255, 0, 4),
@@ -3345,14 +3291,14 @@ function initLibrary()
                     local bg = utility.create("Frame", {
                         ZIndex = 13,
                         Size = UDim2.new(1, 0, 1, 0),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                         Parent = rgb
                     })
                     
                     utility.create("UIGradient", {
                         Rotation = 90,
-                        Color = ColorSequence.new(Color3.fromRGB(32, 32, 32), Color3.fromRGB(17, 17, 17)),
+                    olor = ColorSequence.new(Color3.fromRGB(65, 56, 158), Color3.fromRGB(36, 33, 90)),
                         Parent = bg
                     })
                     
@@ -3376,14 +3322,14 @@ function initLibrary()
                     local bg = utility.create("Frame", {
                         ZIndex = 13,
                         Size = UDim2.new(1, 0, 1, 0),
-                        BorderColor3 = Color3.fromRGB(22, 22, 22),
+                        BorderColor3 = Color3.fromRGB(32, 28, 79),
                         BackgroundColor3 = Color3.fromRGB(255, 255, 255),
                         Parent = hex
                     })
                     
                     utility.create("UIGradient", {
                         Rotation = 90,
-                        Color = ColorSequence.new(Color3.fromRGB(32, 32, 32), Color3.fromRGB(17, 17, 17)),
+                        Color = ColorSequence.new(Color3.fromRGB(65, 56, 158), Color3.fromRGB(36, 33, 90)),
                         Parent = bg
                     })
 
@@ -3641,6 +3587,60 @@ function initLibrary()
         return windowTypes
     end
 
+    local logo = Instance.new("ImageLabel")
+    logo.Parent = gui
+    logo.Size = UDim2.new(0, 400, 0, 400)
+    logo.Position = UDim2.new(0.5, 0, 0.5, 0)
+    logo.AnchorPoint = Vector2.new(0.5, 0.5)
+    logo.Image = "rbxassetid://96406307933953"
+    logo.BackgroundTransparency = 1
+    logo.ImageTransparency = 1
+
+    task.wait(0.8)
+
+    tweenService:Create(logo, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), { ImageTransparency = 0 }):Play()
+
+    task.wait(0.5)
+
+    tweenService:Create(logo, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), { ImageTransparency = 1 }):Play()
+
+
+    task.delay(1.2, function()
+        local fadeDuration = 1
+    
+        for _, obj in pairs(AllObjects) do
+            pcall(function()
+                if obj:IsA("GuiObject") then
+                    local tweenInfo = TweenInfo.new(fadeDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut)
+
+                    if obj.BackgroundTransparency and not ExclusionsTable[obj] and not obj:IsA("TextLabel") then
+                        tweenService:Create(obj, tweenInfo, { BackgroundTransparency = 0 }):Play()
+                    end
+    
+                    if obj:IsA("TextLabel") or obj:IsA("TextButton") then
+                        tweenService:Create(obj, tweenInfo, { TextTransparency = 0 }):Play()
+                        tweenService:Create(obj, tweenInfo, { ImageTransparency = 0 }):Play()
+                        tweenService:Create(obj, tweenInfo, { BackgroundTransparency = 1 }):Play()
+                    end
+                end
+            end)
+        end
+
+        for i, v in pairs(ExclusionsTable) do
+            if v:IsA("TextButton") then
+                tweenService:Create(v, TweenInfo.new(fadeDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), { TextTransparency = 0 }):Play()
+            elseif v:IsA("TextLabel") then
+                tweenService:Create(v, TweenInfo.new(fadeDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), { BackgroundTransparency = 1 }):Play()
+                tweenService:Create(v, TweenInfo.new(fadeDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), { TextTransparency = 0 }):Play()
+            elseif v:IsA("ImageLabel") then
+                tweenService:Create(v, TweenInfo.new(fadeDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), { ImageTransparency = 0 }):Play()
+            elseif v:IsA("TextBox") then
+                tweenService:Create(v, TweenInfo.new(fadeDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), { BackgroundTransparency = 1 }):Play()
+                tweenService:Create(v, TweenInfo.new(fadeDuration, Enum.EasingStyle.Quad, Enum.EasingDirection.InOut), { TextTransparency = 0 }):Play()
+            end
+        end
+    end)
 
     return library
 end
+
